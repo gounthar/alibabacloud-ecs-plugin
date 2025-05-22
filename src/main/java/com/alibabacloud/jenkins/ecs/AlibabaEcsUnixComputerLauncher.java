@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 import com.alibabacloud.credentials.plugin.auth.AlibabaPrivateKey;
 import com.alibabacloud.jenkins.ecs.exception.AlibabaEcsException;
@@ -71,6 +72,12 @@ public class AlibabaEcsUnixComputerLauncher extends AlibabaEcsComputerLauncher {
             // 4. 启动follower的jenkins进程
             String workDir = StringUtils.isNotBlank(remoteFs) ? remoteFs : tmpDir;
             String hostIp = getHostIp(node, listener);
+
+            if (hostIp == null) {
+                listener.getLogger().println("Host IP is null. Aborting launch.");
+                return; // or throw an exception if this is inside a method that returns void
+            }
+            
             String launchString
                 = "java -jar " + tmpDir + "/remoting.jar -workDir " + workDir + " -jar-cache "
                 + workDir + "/remoting/jarCache";
@@ -200,7 +207,7 @@ public class AlibabaEcsUnixComputerLauncher extends AlibabaEcsComputerLauncher {
 
         String privateKey = tempKey.getPrivateKey();
 
-        File tempFile = File.createTempFile("ecs_", ".pem");
+        File tempFile = Files.createTempFile("ecs_", ".pem").toFile();
         try {
             FileOutputStream fileOutputStream = new FileOutputStream(tempFile);
             OutputStreamWriter writer = new OutputStreamWriter(fileOutputStream, StandardCharsets.UTF_8);
@@ -268,7 +275,8 @@ public class AlibabaEcsUnixComputerLauncher extends AlibabaEcsComputerLauncher {
 
     private String getHostIp(AlibabaEcsSpotFollower node, TaskListener listener) {
         String hostIp = null;
-        for (int i = 0; i < 5; i++) {
+        // 10 because we sometimes need more time
+        for (int i = 0; i < 10; i++) {
             hostIp = node.getPublicIp();
             if (StringUtils.isBlank(hostIp)) {
                 // 优先使用公网IP, 没有的话, 则降级到内网IP.
@@ -286,7 +294,7 @@ public class AlibabaEcsUnixComputerLauncher extends AlibabaEcsComputerLauncher {
                 "privateIp is null. publicIp is null. instanceId: " + node
                     .getEcsInstanceId(), null);
             try {
-                Thread.sleep(1000L);
+                Thread.sleep(2000L); // also need more time 
             } catch (InterruptedException e) {
                 LogHelper.error(log, listener, "getHostIp error instanceId: " + node.getEcsInstanceId(), e);
             }
